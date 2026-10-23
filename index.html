@@ -29,6 +29,7 @@ body{background:var(--bg);color:var(--white);font-family:'Barlow',sans-serif;min
 <div id="tab-bar">
   <button class="tab-btn active" id="tab-tv" onclick="switchTab('tv')">&#128250; PAINEL TV</button>
   <button class="tab-btn" id="tab-admin" onclick="switchTab('admin')">&#9724; PLANILHA DE ETAPAS</button>
+  <button class="tab-btn" id="tab-done" onclick="switchTab('done')">&#10003; CONCLUÍDOS <span id="done-count" style="margin-left:.35rem;background:#2196f3;color:#000;border-radius:10px;padding:0 .45rem;font-size:.65rem">0</span></button>
   <div id="clock-top">--:--</div>
 </div>
 
@@ -102,7 +103,7 @@ body{background:var(--bg);color:var(--white);font-family:'Barlow',sans-serif;min
             <th style="padding:.6rem 1.2rem;text-align:left;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase">Projeto / Servico</th>
             <th style="padding:.6rem 1rem;text-align:center;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase">Inicio</th>
             <th style="padding:.6rem 1rem;text-align:center;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase">Prazo</th>
-            <th style="padding:.6rem 1.2rem;text-align:left;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase;min-width:260px">Progresso</th>
+            <th style="padding:.6rem 1.2rem;text-align:left;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase;min-width:520px">Progresso por etapa (início → fim de cada etapa)</th>
             <th style="padding:.6rem 1rem;text-align:center;font-size:.65rem;font-weight:700;letter-spacing:.14em;color:#aac8e8;text-transform:uppercase">Status</th>
           </tr>
         </thead>
@@ -113,12 +114,35 @@ body{background:var(--bg);color:var(--white);font-family:'Barlow',sans-serif;min
       <div style="display:flex;align-items:center;gap:1.4rem">
         <span style="font-size:.72rem;font-weight:700;display:flex;align-items:center;gap:.4rem"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:var(--blue)"></span>Concluído</span>
         <span style="font-size:.72rem;font-weight:700;display:flex;align-items:center;gap:.4rem"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:var(--green)"></span>Dentro do Prazo</span>
+        <span style="font-size:.72rem;font-weight:700;display:flex;align-items:center;gap:.4rem"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:var(--yellow)"></span>Vence em até 3 dias</span>
         <span style="font-size:.72rem;font-weight:700;display:flex;align-items:center;gap:.4rem"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:var(--red)"></span>Prazo Crítico</span>
       </div>
       <div style="font-size:.75rem;font-weight:700;letter-spacing:.06em">
         <span style="color:var(--white)">PLANEJAR, EXECUTAR, CONCLUIR. </span>
         <span style="color:var(--yellow);font-style:italic">FAZER BEM, FAZER SEMPRE!</span>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="view-done" style="display:none;padding:1rem">
+  <div style="background:#0d0d0d;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+    <div style="padding:.8rem 1.2rem;background:#111;border-bottom:1px solid var(--border)">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:.08em">PROJETOS CONCLUÍDOS</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#1a1a1a;border-bottom:1px solid var(--border)">
+            <th style="padding:.55rem 1.2rem;text-align:left;font-size:.6rem;font-weight:700;letter-spacing:.15em;color:var(--muted);text-transform:uppercase">Projeto</th>
+            <th style="padding:.55rem .9rem;text-align:center;font-size:.6rem;font-weight:700;letter-spacing:.15em;color:var(--muted);text-transform:uppercase">Início</th>
+            <th style="padding:.55rem .9rem;text-align:center;font-size:.6rem;font-weight:700;letter-spacing:.15em;color:var(--muted);text-transform:uppercase">Prazo final</th>
+            <th style="padding:.55rem .9rem;text-align:center;font-size:.6rem;font-weight:700;letter-spacing:.15em;color:var(--muted);text-transform:uppercase">Etapas</th>
+            <th style="padding:.55rem .9rem;width:90px"></th>
+          </tr>
+        </thead>
+        <tbody id="done-tbody"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -173,8 +197,24 @@ function load(){
   ]};
 }
 
-let data=load();
+function migrate(d){
+  /* etapas antigas não tinham datas: distribui o período do projeto entre elas (ajuste depois na planilha) */
+  d.projects.forEach(function(p){
+    if(!p.steps||!p.steps.length||!p.inicio||!p.prazo)return;
+    const semData=p.steps.every(function(st){return st.inicio===undefined&&st.fim===undefined;});
+    if(!semData)return;
+    const a=Date.parse(p.inicio),b=Date.parse(p.prazo),n=p.steps.length;
+    if(isNaN(a)||isNaN(b)||b<a)return;
+    p.steps.forEach(function(st,i){
+      st.inicio=new Date(a+(b-a)*i/n).toISOString().slice(0,10);
+      st.fim=new Date(a+(b-a)*(i+1)/n).toISOString().slice(0,10);
+    });
+  });
+  return d;
+}
+let data=migrate(load());
 function save(){try{localStorage.setItem(SK,JSON.stringify(data));}catch(e){}}
+save();
 
 function calcProgress(steps){
   if(!steps||!steps.length)return 0;
@@ -182,17 +222,47 @@ function calcProgress(steps){
   const done=steps.reduce((a,s)=>a+(s.s==='done'?2:s.s==='partial'?1:0),0);
   return Math.round((done/total)*100);
 }
+function todayStr(){
+  const n=new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+}
+function daysUntil(fim){return (Date.parse(fim)-Date.parse(todayStr()))/86400000;}
+/* cor/estado de UMA etapa, pelo prazo (fim) da própria etapa */
+function stepStatus(st){
+  if(st.s==='done')return'concluido';
+  if(!st.fim)return'dentro_prazo';
+  const d=daysUntil(st.fim);
+  if(d<0)return'prazo_critico';
+  if(d<=3)return'prazo_em_atraso';
+  return'dentro_prazo';
+}
+/* início/fim do projeto: derivados das etapas quando elas têm data */
+function projRange(p){
+  const ini=(p.steps||[]).map(function(x){return x.inicio;}).filter(Boolean).sort();
+  const fim=(p.steps||[]).map(function(x){return x.fim;}).filter(Boolean).sort();
+  if(ini.length||fim.length)return{inicio:ini[0]||p.inicio||'',fim:fim.length?fim[fim.length-1]:(p.prazo||''),derived:true};
+  return{inicio:p.inicio||'',fim:p.prazo||'',derived:false};
+}
+/* status do projeto = pior status entre as etapas ainda não concluídas */
 function getStatus(p){
-  const prog=calcProgress(p.steps);
-  if(prog>=100)return'concluido';
-  const today=new Date().toISOString().slice(0,10);
-  if(p.prazo&&p.prazo<today)return'prazo_critico';
+  if(calcProgress(p.steps)>=100)return'concluido';
+  const abertas=(p.steps||[]).filter(function(x){return x.s!=='done';});
+  if(abertas.some(function(x){return x.fim;})){
+    const ss=abertas.map(stepStatus);
+    if(ss.indexOf('prazo_critico')>=0)return'prazo_critico';
+    if(ss.indexOf('prazo_em_atraso')>=0)return'prazo_em_atraso';
+    return'dentro_prazo';
+  }
+  /* sem datas nas etapas: usa o prazo do projeto (comportamento antigo) */
   if(p.prazo){
-    const diff=(new Date(p.prazo)-new Date(today))/(1000*60*60*24);
-    if(diff<=3)return'prazo_em_atraso';
+    const d=daysUntil(p.prazo);
+    if(d<0)return'prazo_critico';
+    if(d<=3)return'prazo_em_atraso';
   }
   return'dentro_prazo';
 }
+function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});}
+function fmtShort(d){if(!d)return'--';const a=d.split('-');return a[2]+'/'+a[1];}
 function fmtDate(d){if(!d)return'--';const[y,m,dd]=d.split('-');return dd+'/'+m+'/'+y;}
 function barColor(s){return s==='concluido'?'#2196f3':s==='prazo_critico'?'#e84040':s==='prazo_em_atraso'?'#f5c518':'#2ecc40';}
 function statusDot(s){const c=barColor(s);return'<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:'+c+';box-shadow:0 0 8px '+c+'90"></span>';}
@@ -257,6 +327,25 @@ function attachInlineStep(el,pid,sid,currentVal){
   });
 }
 
+function attachInlineStepDate(el,pid,sid,field,currentVal){
+  el.classList.add('editable');
+  el.title='Clique para editar data';
+  el.addEventListener('click',function(e){
+    e.stopPropagation();
+    if(el.querySelector('input'))return;
+    const inp=document.createElement('input');
+    inp.type='date';inp.className='editable-date';inp.value=currentVal||'';
+    el.innerHTML='';el.appendChild(inp);inp.focus();
+    function commit(){
+      const p=data.projects.find(x=>x.id===pid);
+      if(p){const st=p.steps.find(x=>x.id===sid);if(st){st[field]=inp.value;currentVal=inp.value;save();openRow=pid;renderAll();}}
+    }
+    inp.addEventListener('blur',commit);
+    inp.addEventListener('change',function(){inp.blur();});
+    inp.addEventListener('keydown',function(ev){if(ev.key==='Enter')inp.blur();});
+  });
+}
+
 /* RENDER TV */
 function renderTV(){
   let c=0,a=0,y=0,r=0,tp=0;
@@ -283,34 +372,52 @@ function renderTV(){
   document.getElementById('k-atr-pct').textContent=total?Math.round(r/total*100)+'%':'0%';
   const tb=document.getElementById('tv-tbody');
   tb.innerHTML='';
-  data.projects.forEach(function(p,i){
+  const ativos=data.projects.filter(function(p){return getStatus(p)!=='concluido';});
+  if(!ativos.length){
+    tb.innerHTML='<tr><td colspan="5" style="padding:2rem;text-align:center;color:#666;font-size:.9rem">Nenhum projeto em andamento.</td></tr>';
+  }
+  ativos.forEach(function(p,i){
     const prog=calcProgress(p.steps);const s=getStatus(p);const bc=barColor(s);
-    const late=s==='prazo_critico';
+    const rg=projRange(p);
+    const late=s!=='concluido'&&!!rg.fim&&daysUntil(rg.fim)<0;
     const bg=i%2===0?'#111':'#131313';
     const tr=document.createElement('tr');
     tr.style.cssText='background:'+bg+';border-bottom:1px solid #1e1e1e';
-    // nome cell
+    // nome
     const tdN=document.createElement('td');
     tdN.style.cssText='padding:.6rem 1.2rem;font-size:.9rem;font-weight:700';
     tdN.textContent=p.nome;
     attachInlineText(tdN,p.id,'nome',p.nome);
     tr.appendChild(tdN);
-    // inicio cell
+    // inicio (derivado das etapas quando houver)
     const tdI=document.createElement('td');
     tdI.style.cssText='padding:.6rem 1rem;text-align:center;font-size:.8rem;color:#888';
-    tdI.textContent=fmtDate(p.inicio);
-    attachInlineDate(tdI,p.id,'inicio',p.inicio||'');
+    tdI.textContent=fmtDate(rg.inicio);
+    if(!rg.derived)attachInlineDate(tdI,p.id,'inicio',p.inicio||'');
     tr.appendChild(tdI);
-    // prazo cell
+    // prazo final (derivado das etapas quando houver)
     const tdP=document.createElement('td');
     tdP.style.cssText='padding:.6rem 1rem;text-align:center;font-size:.8rem;color:'+(late?'#e84040':'#888')+';font-weight:'+(late?700:400);
-    tdP.textContent=fmtDate(p.prazo);
-    attachInlineDate(tdP,p.id,'prazo',p.prazo||'');
+    tdP.textContent=fmtDate(rg.fim);
+    if(!rg.derived)attachInlineDate(tdP,p.id,'prazo',p.prazo||'');
     tr.appendChild(tdP);
-    // progress
+    // progresso por etapa
     const tdPr=document.createElement('td');
     tdPr.style.cssText='padding:.6rem 1.2rem';
-    tdPr.innerHTML='<div style="display:flex;align-items:center;gap:.7rem"><div style="flex:1;height:20px;background:#2a2a2a;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+prog+'%;background:'+bc+';border-radius:3px;transition:width .6s ease"></div></div><span style="font-size:.85rem;font-weight:800;color:'+bc+';min-width:40px;text-align:right">'+prog+'%</span></div>';
+    let seg='';
+    (p.steps||[]).forEach(function(st){
+      const ss=stepStatus(st);const c=barColor(ss);
+      const pct=st.s==='done'?100:st.s==='partial'?50:0;
+      const dt=fmtShort(st.inicio)+' → '+fmtShort(st.fim);
+      const dc=ss==='prazo_critico'?'#e84040':ss==='prazo_em_atraso'?'#f5c518':'#888';
+      seg+='<div style="flex:1 1 0;min-width:88px" title="'+esc(st.nome)+' · '+dt+'">'
+        +'<div style="font-size:.7rem;font-weight:700;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:.2rem">'+esc(st.nome)+'</div>'
+        +'<div style="height:12px;background:'+c+'26;border:1px solid '+c+'66;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+c+';transition:width .6s ease"></div></div>'
+        +'<div style="font-size:.62rem;font-weight:'+(ss==='prazo_critico'?800:600)+';color:'+dc+';margin-top:.2rem;white-space:nowrap">'+dt+'</div>'
+        +'</div>';
+    });
+    if(!seg)seg='<div style="font-size:.72rem;color:#555">Sem etapas cadastradas</div>';
+    tdPr.innerHTML='<div style="display:flex;align-items:flex-start;gap:.7rem"><div style="flex:1;display:flex;gap:.45rem">'+seg+'</div><span style="font-size:.95rem;font-weight:800;color:'+bc+';min-width:44px;text-align:right">'+prog+'%</span></div>';
     tr.appendChild(tdPr);
     // status
     const tdS=document.createElement('td');
@@ -327,11 +434,12 @@ function renderAdmin(){
   tb.innerHTML='';
   data.projects.forEach(function(p){
     const prog=calcProgress(p.steps);const s=getStatus(p);const bc=barColor(s);
-    const late=s==='prazo_critico';
+    const rg=projRange(p);
+    const late=s!=='concluido'&&!!rg.fim&&daysUntil(rg.fim)<0;
     const isOpen=openRow===p.id;
     const nS=p.steps?p.steps.length:0;
     const doneC=p.steps?p.steps.filter(function(x){return x.s==='done';}).length:0;
-    const sl=s==='concluido'?'<span style="color:#2ecc40;font-size:.7rem;font-weight:700">Concluído</span>':s==='atrasado'?'<span style="color:#e84040;font-size:.7rem;font-weight:700">Prazo Crítico</span>':'<span style="color:#f5c518;font-size:.7rem;font-weight:700">Andamento</span>';
+    const sl='<span style="color:'+barColor(s)+';font-size:.7rem;font-weight:700">'+(s==='concluido'?'Concluído':s==='prazo_critico'?'Prazo Crítico':s==='prazo_em_atraso'?'Vence em breve':'Dentro do prazo')+'</span>';
     const tr=document.createElement('tr');
     tr.style.cssText='cursor:pointer;border-bottom:1px solid #1e1e1e;background:'+(isOpen?'rgba(245,197,24,.05)':'#111');
     tr.addEventListener('click',function(){toggleRow(p.id);});
@@ -352,16 +460,16 @@ function renderAdmin(){
     // inicio
     const tdI=document.createElement('td');
     tdI.style.cssText='padding:.58rem .9rem;text-align:center;font-size:.75rem;color:#888';
-    tdI.textContent=fmtDate(p.inicio);
+    tdI.textContent=fmtDate(rg.inicio);
     tdI.addEventListener('click',function(e){e.stopPropagation();});
-    attachInlineDate(tdI,p.id,'inicio',p.inicio||'');
+    if(!rg.derived)attachInlineDate(tdI,p.id,'inicio',p.inicio||'');else tdI.title='Calculado a partir das etapas';
     tr.appendChild(tdI);
     // prazo
     const tdP=document.createElement('td');
     tdP.style.cssText='padding:.58rem .9rem;text-align:center;font-size:.75rem;color:'+(late?'#e84040':'#888');
-    tdP.textContent=fmtDate(p.prazo);
+    tdP.textContent=fmtDate(rg.fim);
     tdP.addEventListener('click',function(e){e.stopPropagation();});
-    attachInlineDate(tdP,p.id,'prazo',p.prazo||'');
+    if(!rg.derived)attachInlineDate(tdP,p.id,'prazo',p.prazo||'');else tdP.title='Calculado a partir das etapas';
     tr.appendChild(tdP);
     // etapas count
     const tdE=document.createElement('td');
@@ -410,7 +518,7 @@ function renderSteps(p,container){
     const tbl=document.createElement('table');
     tbl.style.cssText='width:100%;border-collapse:collapse';
     const hdr=document.createElement('thead');
-    hdr.innerHTML='<tr style="border-bottom:1px solid #1e1e1e"><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:left;text-transform:uppercase;width:30px">#</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:left;text-transform:uppercase">Etapa</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:center;text-transform:uppercase;width:200px">Estado</th><th style="padding:.4rem .8rem;width:30px"></th></tr>';
+    hdr.innerHTML='<tr style="border-bottom:1px solid #1e1e1e"><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:left;text-transform:uppercase;width:30px">#</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:left;text-transform:uppercase">Etapa</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:center;text-transform:uppercase;width:150px">Início</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:center;text-transform:uppercase;width:150px">Fim</th><th style="padding:.4rem .8rem;font-size:.58rem;letter-spacing:.15em;color:#555;text-align:center;text-transform:uppercase;width:200px">Estado</th><th style="padding:.4rem .8rem;width:30px"></th></tr>';
     const tbody=document.createElement('tbody');
     p.steps.forEach(function(st,i){
       const sc=st.s==='done'?'rgba(46,204,64,.15)':st.s==='partial'?'rgba(245,197,24,.15)':'rgba(80,80,80,.15)';
@@ -430,6 +538,19 @@ function renderSteps(p,container){
       tdNome.textContent=st.nome;
       attachInlineStep(tdNome,p.id,st.id,st.nome);
       str.appendChild(tdNome);
+      // inicio / fim da etapa
+      const ss=stepStatus(st);
+      const tdIni=document.createElement('td');
+      tdIni.style.cssText='padding:.45rem .8rem;text-align:center;font-size:.78rem;color:#888';
+      tdIni.textContent=fmtDate(st.inicio);
+      attachInlineStepDate(tdIni,p.id,st.id,'inicio',st.inicio||'');
+      str.appendChild(tdIni);
+      const tdFim=document.createElement('td');
+      const fc=ss==='prazo_critico'?'#e84040':ss==='prazo_em_atraso'?'#f5c518':'#888';
+      tdFim.style.cssText='padding:.45rem .8rem;text-align:center;font-size:.78rem;color:'+fc+';font-weight:'+(ss==='prazo_critico'?800:400);
+      tdFim.textContent=fmtDate(st.fim);
+      attachInlineStepDate(tdFim,p.id,st.id,'fim',st.fim||'');
+      str.appendChild(tdFim);
       // state btn
       const tdState=document.createElement('td');
       tdState.style.cssText='padding:.45rem .8rem;text-align:center';
@@ -463,7 +584,33 @@ function renderSteps(p,container){
   container.appendChild(addBtn);
 }
 
-function renderAll(){renderTV();renderAdmin();}
+function renderDone(){
+  const tb=document.getElementById('done-tbody');
+  tb.innerHTML='';
+  const lista=data.projects.filter(function(p){return getStatus(p)==='concluido';});
+  document.getElementById('done-count').textContent=lista.length;
+  if(!lista.length){
+    tb.innerHTML='<tr><td colspan="5" style="padding:2rem;text-align:center;color:#666;font-size:.9rem">Nenhum projeto concluído ainda.</td></tr>';
+    return;
+  }
+  lista.forEach(function(p,i){
+    const rg=projRange(p);
+    const tr=document.createElement('tr');
+    tr.style.cssText='background:'+(i%2===0?'#111':'#131313')+';border-bottom:1px solid #1e1e1e';
+    tr.innerHTML='<td style="padding:.6rem 1.2rem;font-size:.9rem;font-weight:700"><span style="color:#2196f3;margin-right:.5rem">&#10003;</span>'+esc(p.nome)+'</td>'
+      +'<td style="padding:.6rem .9rem;text-align:center;font-size:.8rem;color:#888">'+fmtDate(rg.inicio)+'</td>'
+      +'<td style="padding:.6rem .9rem;text-align:center;font-size:.8rem;color:#888">'+fmtDate(rg.fim)+'</td>'
+      +'<td style="padding:.6rem .9rem;text-align:center;font-size:.8rem;color:#2196f3;font-weight:700">'+p.steps.length+'/'+p.steps.length+'</td>';
+    const td=document.createElement('td');
+    td.style.cssText='padding:.6rem .9rem;text-align:center';
+    const b=document.createElement('button');
+    b.className='btn-ghost';b.textContent='Abrir';b.title='Ver etapas na planilha';
+    b.addEventListener('click',function(){openRow=p.id;switchTab('admin');renderAdmin();});
+    td.appendChild(b);tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+function renderAll(){renderTV();renderDone();renderAdmin();}
 function toggleRow(id){openRow=(openRow===id)?null:id;renderAdmin();}
 
 function cycleStep(pid,sid){
@@ -483,7 +630,7 @@ function addStepInline(pid){
   if(!nome||!nome.trim())return;
   const p=data.projects.find(function(x){return x.id===pid;});
   const nid=p.steps.length>0?Math.max.apply(null,p.steps.map(function(s){return s.id;}))+1:1;
-  p.steps.push({id:nid,nome:nome.trim(),s:'none'});
+  p.steps.push({id:nid,nome:nome.trim(),s:'none',inicio:'',fim:''});
   save();openRow=pid;renderAll();
 }
 function addNewProject(){
@@ -501,13 +648,13 @@ function deleteProject(id){
   }
 }
 function exportCSV(){
-  var rows=[['Projeto','Inicio','Prazo','Progresso (%)','Status','Etapa','Estado']];
+  var rows=[['Projeto','Inicio','Prazo','Progresso (%)','Status','Etapa','Inicio da Etapa','Fim da Etapa','Estado']];
   data.projects.forEach(function(p){
     var prog=calcProgress(p.steps);var s=getStatus(p);
     var sl=s==='concluido'?'Concluído':s==='prazo_critico'?'Prazo Crítico':s==='prazo_em_atraso'?'Prazo em Atraso':'Dentro do Prazo';
     function fd(d){if(!d)return'--';var pts=d.split('-');return pts[2]+'/'+pts[1]+'/'+pts[0];}
-    if(!p.steps||!p.steps.length){rows.push(['"'+p.nome+'"',fd(p.inicio),fd(p.prazo),prog,sl,'--','--']);}
-    else{p.steps.forEach(function(st,i){var stl=st.s==='done'?'Concluída':st.s==='partial'?'Parcial':'Não iniciada';rows.push([i===0?'"'+p.nome+'"':'',i===0?fd(p.inicio):'',i===0?fd(p.prazo):'',i===0?prog:'',i===0?sl:'','"'+st.nome+'"',stl]);});}
+    if(!p.steps||!p.steps.length){rows.push(['"'+p.nome+'"',fd(p.inicio),fd(p.prazo),prog,sl,'--','--','--','--']);}
+    else{p.steps.forEach(function(st,i){var stl=st.s==='done'?'Concluída':st.s==='partial'?'Parcial':'Não iniciada';var rg=projRange(p);rows.push([i===0?'"'+p.nome+'"':'',i===0?fd(rg.inicio):'',i===0?fd(rg.fim):'',i===0?prog:'',i===0?sl:'','"'+st.nome+'"',fd(st.inicio),fd(st.fim),stl]);});}
   });
   var csv=rows.map(function(r){return r.join(',');}).join('\n');
   var blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
@@ -515,10 +662,10 @@ function exportCSV(){
   var a=document.createElement('a');a.href=url;a.download='projetos_martins.csv';a.click();URL.revokeObjectURL(url);
 }
 function switchTab(t){
-  document.getElementById('view-tv').style.display=t==='tv'?'block':'none';
-  document.getElementById('view-admin').style.display=t==='admin'?'block':'none';
-  document.getElementById('tab-tv').className='tab-btn'+(t==='tv'?' active':'');
-  document.getElementById('tab-admin').className='tab-btn'+(t==='admin'?' active':'');
+  ['tv','done','admin'].forEach(function(n){
+    document.getElementById('view-'+n).style.display=t===n?'block':'none';
+    document.getElementById('tab-'+n).className='tab-btn'+(t===n?' active':'');
+  });
 }
 function updateClock(){
   var now=new Date();
